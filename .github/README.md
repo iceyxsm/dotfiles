@@ -1,6 +1,6 @@
 ## My Arch Linux Dotfiles
 
-Welcome to my Hyprland dotfiles repository! This is a fork of [StealthIQ's dotfiles](https://github.com/StealthIQ/dotfiles) with a completely rewritten, bulletproof installer and various improvements.
+Welcome to my Hyprland dotfiles repository! This is a fork of [StealthIQ's dotfiles](https://github.com/StealthIQ/dotfiles) with a completely rewritten installer and various improvements.
 
 > ** New: One-Command Installer**  
 > Forked & Enhanced by [Iceyxsm](https://github.com/iceyxsm) | Original configs by [StealthIQ](https://github.com/StealthIQ)  
