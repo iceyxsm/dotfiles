@@ -38,7 +38,7 @@ export PATH="$PATH:$HOME/.local/bin/"
 # Lang
 export LANG=en_US.UTF-8
 # Spicetify
-# export PATH=$PATH:/home/stealthiq/.spicetify
+# export PATH=$PATH:$HOME/.spicetify
 
 # conda openssl
 export CRYPTOGRAPHY_OPENSSL_NO_LEGACY=1

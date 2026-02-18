@@ -30,14 +30,14 @@ source ~/.config/zsh/git.zsh
 # <<< conda initialize <<<
 
 
-export LD_LIBRARY_PATH=/home/stealthiq/.local/lib/arch-mojo:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=$HOME/.local/lib/arch-mojo:$LD_LIBRARY_PATH
 
 autoload -Uz compinit
 zstyle ':completion:*' menu select
 fpath+=~/.zfunc
 
 # pnpm
-export PNPM_HOME="/home/stealthiq/.local/share/pnpm"
+export PNPM_HOME="$HOME/.local/share/pnpm"
 case ":$PATH:" in
   *":$PNPM_HOME:"*) ;;
   *) export PATH="$PNPM_HOME:$PATH" ;;
