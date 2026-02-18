@@ -1,9 +1,9 @@
 ## My Arch Linux Dotfiles
 
-Welcome to my experimental Arch Linux dotfiles repository! Please note that these configurations are a work in progress and not recommended for production setups. Use them at your own discretion.
+Welcome to my Hyprland dotfiles repository! This is a fork of [StealthIQ's dotfiles](https://github.com/StealthIQ/dotfiles) with a completely rewritten, bulletproof installer and various improvements.
 
 > ** New: One-Command Installer**  
-> Made by [StealthIQ](https://github.com/StealthIQ) | Refactored by [Iceyxsm](https://github.com/iceyxsm)  
+> Forked & Enhanced by [Iceyxsm](https://github.com/iceyxsm) | Original configs by [StealthIQ](https://github.com/StealthIQ)  
 > ```bash
 > ./install.sh --auto
 > ```
@@ -41,7 +41,7 @@ This repository contains dotfiles for a unique Arch Linux setup that includes th
 ⚠️ Designed for Arch Linux with Hyprland.
 
 ```bash
-git clone --depth 1 https://github.com/StealthIQ/dotfiles.git
+git clone --depth 1 https://github.com/iceyxsm/dotfiles.git
 cd dotfiles
 ./install.sh --auto           # Install StealthIQ setup (default)
 ./install.sh --auto jakoolit  # Or install JaKooLit setup
@@ -55,7 +55,7 @@ cd dotfiles
 - ✅ Dry-run mode: `./install.sh --dry-run`
 - ✅ Switch setups: `./install.sh --switch [stealthiq|jakoolit]`
 
-Made by [StealthIQ](https://github.com/StealthIQ) | Refactored by [Iceyxsm](https://github.com/iceyxsm)
+Maintained by [Iceyxsm](https://github.com/iceyxsm) | Original configs by [StealthIQ](https://github.com/StealthIQ)
 
 ---
 
@@ -235,12 +235,12 @@ plex script                      |
 
 ### Feedback
 
-If you have any feedback or suggestions, please reach out to me via email at stealthiq[at]protonmail[.]com or [Twitter](https://twitter.com/StealthIQQ).
+If you have any feedback or suggestions for this fork, please reach out via [GitHub Issues](https://github.com/iceyxsm/dotfiles/issues).
 
 ### Author
 
-- **Made by:** [@Stealthiq](https://www.github.com/stealthiq)
-- **Installer Refactored by:** [@Iceyxsm](https://www.github.com/iceyxsm)
+- **Fork Maintainer:** [@Iceyxsm](https://www.github.com/iceyxsm)
+- **Original Configs:** [@Stealthiq](https://www.github.com/stealthiq)
 
 ### License
 
