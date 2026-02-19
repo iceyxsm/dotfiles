@@ -48,6 +48,12 @@ fi
 # Dry run mode
 DRY_RUN=false
 
+# Verbose mode (show all commands)
+VERBOSE=false
+
+# Debug mode (show variable values)
+DEBUG=false
+
 # =============================================================================
 # LOGGING & OUTPUT
 # =============================================================================
@@ -55,6 +61,8 @@ DRY_RUN=false
 # Initialize logging
 init_logging() {
     mkdir -p "$LOG_DIR" 2>/dev/null || true
+    # Store original file descriptors for cleanup
+    exec 3>&1 4>&2
     exec 1> >(tee -a "$LOG_FILE")
     exec 2> >(tee -a "$LOG_FILE" >&2)
     log "INFO" "=== Dotfiles Installer v$SCRIPT_VERSION ==="
@@ -75,6 +83,25 @@ success() { echo -e "${GREEN}✓${RESET} $*"; log "SUCCESS" "$@"; }
 warn() { echo -e "${YELLOW}⚠${RESET} $*" >&2; log "WARN" "$@"; }
 error() { echo -e "${RED}✗${RESET} $*" >&2; log "ERROR" "$@"; }
 header() { echo -e "${CYAN}${BOLD}$*${RESET}"; log "INFO" "$@"; }
+debug() { [[ "$DEBUG" == true ]] && echo -e "${MAGENTA}[DEBUG]${RESET} $*" >&2; log "DEBUG" "$@"; }
+verbose() { [[ "$VERBOSE" == true ]] && echo -e "${BLUE}[VERBOSE]${RESET} $*"; log "VERBOSE" "$@"; }
+
+# Progress indicator
+show_progress() {
+    local message="$1"
+    local pid="$2"
+    local spin='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+    local i=0
+    
+    while kill -0 "$pid" 2>/dev/null; do
+        i=$(( (i+1) % 10 ))
+        printf "\r${CYAN}${spin:$i:1}${RESET} %s" "$message"
+        sleep 0.1
+    done
+    printf "\r%*s\r" $(( ${#message} + 2 )) ""
+}
+
+# =============================================================================
 
 # =============================================================================
 # LOCKING & SAFETY
@@ -122,17 +149,39 @@ create_checkpoint() {
         echo "CHECKPOINT_PATH=$checkpoint_path"
         echo "HOME=$HOME_DIR"
         echo "USER=$(whoami)"
+        echo "KERNEL_VERSION=$(uname -r)"
+        echo "SCRIPT_VERSION=$SCRIPT_VERSION"
     } > "$checkpoint_path/metadata.txt"
+    
+    # Save GPU driver info
+    if command -v lspci &>/dev/null; then
+        lspci | grep -i "vga\|3d\|display" > "$checkpoint_path/gpu_info.txt" 2>/dev/null || true
+    fi
+    
+    # Save installed packages list
+    if command -v pacman &>/dev/null; then
+        pacman -Qe > "$checkpoint_path/installed_packages.txt" 2>/dev/null || true
+    fi
     
     # List currently active symlinks
     find "$CONFIG_DIR" -maxdepth 1 -type l 2>/dev/null > "$checkpoint_path/symlinks.txt" || true
     
-    # Save current hypr config state
-    if [[ -L "$CONFIG_DIR/hypr" ]]; then
-        echo "hypr=$(readlink "$CONFIG_DIR/hypr")" >> "$checkpoint_path/state.txt"
-    elif [[ -d "$CONFIG_DIR/hypr" ]]; then
-        echo "hypr=directory" >> "$checkpoint_path/state.txt"
-    fi
+    # Save current config states for all tracked configs
+    for dir in hypr hypr-stealthiq hypr-jakoolit zsh nvim kitty mpd ncmpcpp rofi ranger neofetch bashtop; do
+        if [[ -L "$CONFIG_DIR/$dir" ]]; then
+            echo "$dir=$(readlink "$CONFIG_DIR/$dir")" >> "$checkpoint_path/state.txt"
+        elif [[ -d "$CONFIG_DIR/$dir" ]]; then
+            echo "$dir=directory" >> "$checkpoint_path/state.txt"
+        fi
+    done
+    
+    # Save shell config states
+    for file in .zshrc .bashrc; do
+        if [[ -f "$HOME_DIR/$file" ]]; then
+            cp "$HOME_DIR/$file" "$checkpoint_path/$file.bak" 2>/dev/null || true
+            echo "$file=file" >> "$checkpoint_path/state.txt"
+        fi
+    done
     
     echo "$checkpoint_path"
 }
@@ -153,20 +202,26 @@ restore_checkpoint() {
     if [[ -f "$checkpoint_path/state.txt" ]]; then
         while IFS='=' read -r key value; do
             case "$key" in
-                hypr)
-                    msg "Restoring hypr config..."
-                    rm -f "$CONFIG_DIR/hypr"
+                hypr|hypr-stealthiq|hypr-jakoolit|zsh|nvim|kitty|mpd|ncmpcpp|rofi|ranger|neofetch|bashtop)
+                    msg "Restoring $key config..."
+                    rm -f "$CONFIG_DIR/$key"
                     if [[ "$value" == "directory" ]]; then
                         # Original was a directory - restore from backup if exists
                         local backup
-                        backup=$(find "$BACKUP_ROOT" -name "hypr" -type d 2>/dev/null | head -1)
+                        backup=$(find "$BACKUP_ROOT" -name "$key" -type d 2>/dev/null | head -1)
                         if [[ -n "$backup" ]]; then
                             cp -r "$backup" "$CONFIG_DIR/"
-                            success "Restored hypr from backup"
+                            success "Restored $key from backup"
                         fi
                     else
-                        ln -sf "$value" "$CONFIG_DIR/hypr"
-                        success "Restored hypr symlink to $value"
+                        ln -sf "$value" "$CONFIG_DIR/$key"
+                        success "Restored $key symlink to $value"
+                    fi
+                    ;;
+                .zshrc|.bashrc)
+                    if [[ -f "$checkpoint_path/$key.bak" ]]; then
+                        cp "$checkpoint_path/$key.bak" "$HOME_DIR/$key"
+                        success "Restored $key from checkpoint"
                     fi
                     ;;
             esac
@@ -179,6 +234,85 @@ restore_checkpoint() {
 # =============================================================================
 # PREREQUISITE CHECKS
 # =============================================================================
+
+# Check available disk space
+check_disk_space() {
+    local required_mb=500  # Minimum 500MB required
+    local available_mb
+    
+    # Get available space in MB
+    available_mb=$(df -m "$HOME_DIR" 2>/dev/null | awk 'NR==2 {print $4}')
+    
+    if [[ -z "$available_mb" ]]; then
+        warn "Could not determine available disk space"
+        return 0  # Continue anyway
+    fi
+    
+    debug "Disk space: ${available_mb}MB available, ${required_mb}MB required"
+    
+    if [[ $available_mb -lt $required_mb ]]; then
+        error "Insufficient disk space: ${available_mb}MB available, ${required_mb}MB required"
+        error "Free up space and try again"
+        return 1
+    fi
+    
+    success "Disk space OK: ${available_mb}MB available"
+    return 0
+}
+
+# Check network connectivity
+check_network() {
+    local test_hosts=("archlinux.org" "google.com" "github.com")
+    local connected=false
+    
+    msg "Checking network connectivity..."
+    
+    for host in "${test_hosts[@]}"; do
+        if ping -c 1 -W 3 "$host" &>/dev/null; then
+            connected=true
+            debug "Network OK: Connected to $host"
+            break
+        fi
+    done
+    
+    if [[ "$connected" == false ]]; then
+        warn "No network connectivity detected"
+        warn "Package installation may fail"
+        return 1
+    fi
+    
+    success "Network connectivity OK"
+    return 0
+}
+
+# Install package with retry logic
+install_with_retry() {
+    local cmd="$1"
+    shift
+    local packages=("$@")
+    local max_attempts=3
+    local delay=5
+    local attempt=1
+    
+    while [[ $attempt -le $max_attempts ]]; do
+        debug "Install attempt $attempt/$max_attempts: ${packages[*]}"
+        
+        if $cmd "${packages[@]}" 2>&1 | tee -a "$LOG_FILE"; then
+            return 0
+        fi
+        
+        if [[ $attempt -lt $max_attempts ]]; then
+            warn "Attempt $attempt failed, retrying in ${delay}s..."
+            sleep $delay
+            delay=$((delay * 2))  # Exponential backoff
+        fi
+        
+        ((attempt++))
+    done
+    
+    error "Failed after $max_attempts attempts: ${packages[*]}"
+    return 1
+}
 
 check_prerequisites() {
     header "CHECKING PREREQUISITES"
@@ -226,6 +360,11 @@ check_prerequisites() {
         error "Failed to create required directories"
         ((failed++)) || true
     }
+    
+    # Check disk space
+    if ! check_disk_space; then
+        ((failed++)) || true
+    fi
     
     if [[ $failed -gt 0 ]]; then
         error "$failed prerequisite check(s) failed"
@@ -298,8 +437,8 @@ backup_configs() {
     local backed_up=0
     local failed=0
     
-    # Backup configs
-    for dir in hypr hypr-stealthiq hypr-jakoolit quickshell hyprpaper dunst conky waybar wallust rofi zsh ncmpcpp mpd cava; do
+    # Backup configs (only directories that exist in dot_config)
+    for dir in hypr hypr-stealthiq hypr-jakoolit hyprpaper dunst conky waybar wallust rofi zsh ncmpcpp mpd cava nvim kitty ranger neofetch bashtop X11 vlc; do
         local src="$CONFIG_DIR/$dir"
         if [[ -e "$src" ]]; then
             if cp -a "$src" "$backup_path/" 2>/dev/null; then
@@ -457,6 +596,35 @@ copy_dotfiles() {
         cp -r "$SCRIPT_DIR/dot_local/"* "$HOME_DIR/.local/" 2>/dev/null || true
     fi
     
+    # Copy wallpapers
+    if [[ -d "$SCRIPT_DIR/misc/.wallpapers" ]]; then
+        msg "Copying wallpapers..."
+        mkdir -p "$HOME_DIR/wallpapers"
+        cp -r "$SCRIPT_DIR/misc/.wallpapers/"* "$HOME_DIR/wallpapers/" 2>/dev/null || true
+        ((copied++)) || true
+    fi
+    
+    # Copy custom fonts
+    if [[ -d "$SCRIPT_DIR/misc/.fonts" ]]; then
+        msg "Copying fonts..."
+        mkdir -p "$HOME_DIR/.local/share/fonts"
+        cp -r "$SCRIPT_DIR/misc/.fonts/"* "$HOME_DIR/.local/share/fonts/" 2>/dev/null || true
+        # Rebuild font cache
+        fc-cache -f -v 2>/dev/null || true
+        ((copied++)) || true
+    fi
+    
+    # Copy icons
+    if [[ -d "$SCRIPT_DIR/misc/.icons" ]]; then
+        msg "Copying icons..."
+        mkdir -p "$HOME_DIR/.icons"
+        cp -r "$SCRIPT_DIR/misc/.icons/"* "$HOME_DIR/.icons/" 2>/dev/null || true
+        ((copied++)) || true
+    fi
+    
+    # Create default Pictures directory structure
+    mkdir -p "$HOME_DIR/Pictures/Screenshots" 2>/dev/null || true
+    
     if [[ $failed -gt 0 ]]; then
         error "$failed copy operation(s) failed"
         return 1
@@ -507,6 +675,181 @@ check_aur_helper() {
     fi
 }
 
+# Install paru (AUR helper) if not present
+install_aur_helper() {
+    local aur_helper
+    aur_helper=$(check_aur_helper)
+    
+    if [[ -n "$aur_helper" ]]; then
+        msg "AUR helper already installed: $aur_helper"
+        return 0
+    fi
+    
+    header "INSTALLING AUR HELPER (paru)"
+    
+    # Check for git and base-devel
+    local build_deps=("git" "base-devel")
+    local missing_deps=()
+    
+    for dep in "${build_deps[@]}"; do
+        if ! pacman -Q "$dep" &>/dev/null 2>&1; then
+            missing_deps+=("$dep")
+        fi
+    done
+    
+    if [[ ${#missing_deps[@]} -gt 0 ]]; then
+        msg "Installing build dependencies: ${missing_deps[*]}"
+        sudo pacman -S --needed --noconfirm "${missing_deps[@]}" 2>&1 | tee -a "$LOG_FILE" || {
+            error "Failed to install build dependencies"
+            return 1
+        }
+    fi
+    
+    # Create temp directory for building
+    local tmp_dir
+    tmp_dir=$(mktemp -d)
+    cd "$tmp_dir"
+    
+    msg "Cloning paru from AUR..."
+    git clone https://aur.archlinux.org/paru.git 2>&1 | tee -a "$LOG_FILE" || {
+        error "Failed to clone paru"
+        rm -rf "$tmp_dir"
+        return 1
+    }
+    
+    cd paru
+    
+    msg "Building and installing paru..."
+    makepkg -si --noconfirm 2>&1 | tee -a "$LOG_FILE" || {
+        error "Failed to build paru"
+        rm -rf "$tmp_dir"
+        return 1
+    }
+    
+    # Cleanup
+    cd /
+    rm -rf "$tmp_dir"
+    
+    success "paru installed successfully"
+    return 0
+}
+
+# =============================================================================
+# GRAPHICS DRIVER DETECTION
+# =============================================================================
+
+detect_gpu() {
+    local gpu_type="unknown"
+    
+    # Check for NVIDIA
+    if lspci | grep -i nvidia &>/dev/null; then
+        gpu_type="nvidia"
+    # Check for AMD
+    elif lspci | grep -i "vga\|3d\|display" | grep -i amd &>/dev/null; then
+        gpu_type="amd"
+    # Check for Intel
+    elif lspci | grep -i "vga\|3d\|display" | grep -i intel &>/dev/null; then
+        gpu_type="intel"
+    # Check for VMware/VirtualBox
+    elif lspci | grep -i "vmware\|virtualbox" &>/dev/null; then
+        gpu_type="virtual"
+    fi
+    
+    echo "$gpu_type"
+}
+
+install_graphics_drivers() {
+    header "DETECTING GRAPHICS DRIVERS"
+    
+    if [[ "$DRY_RUN" == true ]]; then
+        msg "[DRY RUN] Would detect and install graphics drivers"
+        return 0
+    fi
+    
+    local gpu_type
+    gpu_type=$(detect_gpu)
+    
+    msg "Detected GPU type: $gpu_type"
+    
+    local gpu_pkgs=()
+    
+    case "$gpu_type" in
+        nvidia)
+            msg "Installing NVIDIA drivers..."
+            gpu_pkgs=(
+                "nvidia" "nvidia-utils" "nvidia-settings"
+                # For Wayland/Hyprland support
+                "egl-wayland" "lib32-nvidia-utils"
+            )
+            # Check if nvidia-open is preferred (newer GPUs)
+            if [[ "${NVIDIA_OPEN:-}" == "true" ]]; then
+                msg "Using nvidia-open driver..."
+                gpu_pkgs=("nvidia-open" "nvidia-utils" "nvidia-settings" "egl-wayland")
+            fi
+            ;;
+        amd)
+            msg "Installing AMD drivers..."
+            gpu_pkgs=(
+                "mesa" "lib32-mesa"
+                "vulkan-radeon" "lib32-vulkan-radeon"
+                "amdvlk" "lib32-amdvlk"
+                # Video acceleration
+                "libva-utils" "vulkan-tools"
+            )
+            ;;
+        intel)
+            msg "Installing Intel drivers..."
+            gpu_pkgs=(
+                "mesa" "lib32-mesa"
+                "vulkan-intel" "lib32-vulkan-intel"
+                "intel-media-driver" "libva-utils"
+            )
+            ;;
+        virtual)
+            msg "Installing virtual machine drivers..."
+            gpu_pkgs=(
+                "mesa" "lib32-mesa"
+                "xf86-video-vmware"  # For VMware
+            )
+            ;;
+        *)
+            warn "Could not detect GPU type, installing generic drivers"
+            gpu_pkgs=("mesa" "lib32-mesa")
+            ;;
+    esac
+    
+    # Install GPU packages
+    if [[ ${#gpu_pkgs[@]} -gt 0 ]]; then
+        msg "Installing graphics packages: ${gpu_pkgs[*]}"
+        sudo pacman -S --needed --noconfirm "${gpu_pkgs[@]}" 2>&1 | tee -a "$LOG_FILE" || {
+            warn "Some graphics packages may have failed to install"
+        }
+    fi
+    
+    # NVIDIA-specific: Add kernel parameters
+    if [[ "$gpu_type" == "nvidia" ]]; then
+        msg "Configuring NVIDIA for Wayland..."
+        
+        # Check if nvidia modules are in mkinitcpio.conf
+        if [[ -f /etc/mkinitcpio.conf ]]; then
+            if ! grep -q "nvidia" /etc/mkinitcpio.conf; then
+                warn "NVIDIA detected. You may need to add 'nvidia nvidia_modeset nvidia_uvm nvidia_drm' to MODULES in /etc/mkinitcpio.conf"
+                warn "Then run: sudo mkinitcpio -P"
+            fi
+        fi
+        
+        # Add nvidia-drm.modeset=1 to kernel params if not present
+        if [[ -f /etc/default/grub ]]; then
+            if ! grep -q "nvidia-drm.modeset=1" /etc/default/grub; then
+                warn "Consider adding 'nvidia-drm.modeset=1' to GRUB_CMDLINE_LINUX_DEFAULT in /etc/default/grub"
+                warn "Then run: sudo grub-mkconfig -o /boot/grub/grub.cfg"
+            fi
+        fi
+    fi
+    
+    success "Graphics drivers installed"
+}
+
 install_deps() {
     header "INSTALLING DEPENDENCIES"
     
@@ -515,8 +858,153 @@ install_deps() {
         return 0
     fi
     
-    # Core packages
-    local pacman_pkgs=("hyprland" "hyprpaper" "hyprlock" "hypridle" "dunst" "conky" "mpd" "ncmpcpp" "cava" "alacritty" "kitty" "zsh")
+    # First, ensure CA certificates are up to date (fixes certificate errors)
+    msg "Updating CA certificates..."
+    sudo pacman -S --needed --noconfirm ca-certificates 2>&1 | tee -a "$LOG_FILE" || true
+    sudo update-ca-trust 2>/dev/null || true
+    
+    # Install graphics drivers
+    install_graphics_drivers
+    
+    # Install AUR helper if not present
+    install_aur_helper || warn "AUR helper installation failed, AUR packages will be skipped"
+    
+    # Core packages from official repos
+    local pacman_pkgs=(
+        # Hyprland ecosystem
+        "hyprland" "hyprpaper" "hyprlock" "hypridle"
+        # Notifications
+        "dunst" "libnotify"
+        # System monitoring
+        "conky" "btop" "htop"
+        # Audio/Music
+        "mpd" "ncmpcpp" "cava" "playerctl" "pavucontrol"
+        # Audio effects
+        "easyeffects" "lsp-plugins"
+        # Audio utilities
+        "alsa-utils" "wireplumber" "pipewire" "pipewire-pulse"
+        # Terminal
+        "kitty"
+        # Shell
+        "zsh" "fish"
+        # Screenshot/screen recording
+        "grim" "slurp" "wl-clipboard" "hyprshot"
+        # Clipboard history
+        "cliphist"
+        # Brightness control
+        "brightnessctl"
+        # App launcher (fallback)
+        "fuzzel" "rofi"
+        # Session menu (fallback)
+        "wlogout"
+        # File manager
+        "thunar" "dolphin" "nautilus"
+        # File manager plugins
+        "thunar-archive-plugin" "thunar-volman" "tumbler"
+        # Fonts (cursor theme)
+        "bibata-cursor-theme"
+        # Image viewer for wallpaper
+        "imv"
+        # Polkit authentication agent
+        "polkit-gnome"
+        # Keyring
+        "gnome-keyring"
+        # Media control
+        "mpc"
+        # Color picker
+        "hyprpicker"
+        # OCR (for screen text recognition)
+        "tesseract" "tesseract-data-eng"
+        # XDG utilities
+        "xdg-utils" "xdg-user-dirs"
+        # Wayland utilities
+        "wtype" "wev"
+        # Geolocation
+        "geoclue"
+        # Network
+        "networkmanager" "network-manager-applet"
+        # Bluetooth
+        "bluez" "bluez-utils" "blueman"
+        # Archive
+        "unzip" "unrar" "p7zip"
+        # Essential fonts
+        "ttf-font-awesome" "ttf-jetbrains-mono" "noto-fonts" "noto-fonts-emoji"
+        # Additional fonts for icons
+        "ttf-nerd-fonts-symbols" "ttf-nerd-fonts-symbols-mono"
+        # File manager terminal (yazi)
+        "yazi"
+        # Image manipulation (for wallpaper scripts)
+        "imagemagick"
+        # JSON processor (for scripts)
+        "jq"
+        # Calculator (used in some configs)
+        "bc"
+        # Killall command
+        "psmisc"
+        # Find utils
+        "findutils"
+        # Sed/awk/grep
+        "sed" "gawk" "grep"
+        # File watcher
+        "inotify-tools"
+        # Python (for quickshell scripts)
+        "python" "python-pip" "python-virtualenv"
+        # Python packages for quickshell scripts
+        "python-pillow" "python-numpy" "python-opencv"
+        # GNOME desktop for thumbnail generation
+        "gnome-desktop"
+        # Qt dependencies for quickshell
+        "qt5-base" "qt6-base" "qt6-svg" "qt6-quickcontrols2"
+        # KVantum for theming
+        "kvantum"
+        # ydotool for virtual keyboard input (used by quickshell)
+        "ydotool"
+        # hyprsunset for blue light filter (part of hyprland)
+        "hyprsunset"
+        # Modern file operations
+        "eza"           # Modern ls replacement (maintained fork of exa)
+        "zoxide"        # Smart cd command (used with 'z' alias)
+        "bat"           # Modern cat with syntax highlighting
+        "fd"            # Modern find replacement
+        "swww"          # Animated wallpaper setter for Wayland
+        "fzf"           # Fuzzy finder (used in various scripts)
+    )
+    
+    # AUR packages (require paru or yay)
+    local aur_pkgs=(
+        # Quickshell - REQUIRED for UI (bar, launcher, sidebar, etc.)
+        "quickshell"
+        # ActivityWatch (used in execs.conf)
+        "activitywatch-bin"
+        # Vicinae (used in custom/execs.conf and keybinds)
+        "vicinae-git"
+        # Handy (AI assistant)
+        "handy-git"
+        # Python material color generation (for quickshell color scripts)
+        "python-materialyoucolor"
+        # Music recognition (used by quickshell SongRec service)
+        "songrec"
+        # LaTeX renderer for quickshell
+        "microtex"
+        # Pokemon in terminal
+        "pokemon-colorscripts-git"
+        # Browsers
+        "brave-bin"
+        # Notes
+        "obsidian"
+        # Cloud storage
+        "megasync"
+        # App launcher alternative
+        "ulauncher"
+        # Password manager
+        "bitwarden"
+        # Spotify
+        "spotify"
+        # Code editors
+        "visual-studio-code-bin"
+        # Emoji picker
+        "emojione-picker"
+    )
     
     # Install with pacman (official repos)
     if command -v pacman &>/dev/null; then
@@ -529,21 +1017,26 @@ install_deps() {
         fi
     fi
     
-    # Check for AUR helper
+    # Install AUR packages (aur_helper should be available now)
     local aur_helper
     aur_helper=$(check_aur_helper)
     
-    if [[ -z "$aur_helper" ]]; then
-        warn "No AUR helper found (paru/yay)"
-        msg "Install one for AUR packages:"
-        msg "  paru: https://github.com/Morganamilo/paru"
+    if [[ -n "$aur_helper" ]]; then
+        msg "Installing AUR packages with $aur_helper..."
+        # shellcheck disable=SC2024
+        if $aur_helper -S --needed --noconfirm "${aur_pkgs[@]}" 2>&1 | tee -a "$LOG_FILE"; then
+            success "AUR packages installed"
+        else
+            warn "Some AUR packages may have failed (see log)"
+        fi
     else
-        msg "AUR helper: $aur_helper"
+        warn "AUR helper not available - skipping AUR packages"
+        warn "Missing AUR packages: ${aur_pkgs[*]}"
     fi
     
     # Verify critical packages
     local missing=()
-    for pkg in hyprland zsh; do
+    for pkg in hyprland zsh quickshell; do
         if ! command -v "$pkg" &>/dev/null && ! pacman -Q "$pkg" &>/dev/null 2>&1; then
             missing+=("$pkg")
         fi
@@ -654,10 +1147,11 @@ export_dotfiles() {
 ./install.sh
 ```
 
-## Auto Install
+## Other Options
 ```bash
-./install.sh --auto stealthiq
-./install.sh --auto jakoolit
+./install.sh --auto jakoolit    # Install JaKooLit setup
+./install.sh --auto both        # Install both setups
+./install.sh --dry-run          # Preview changes
 ```
 
 ## Features
@@ -687,8 +1181,10 @@ show_usage() {
     show_banner
     echo "${BOLD}Usage:${RESET} $0 [OPTIONS]"
     echo
+    echo "${CYAN}Default:${RESET}"
+    echo "  (no arguments)       Install StealthIQ setup (default)"
+    echo
     echo "${CYAN}Auto Mode:${RESET}"
-    echo "  --auto               Install StealthIQ setup (default)"
     echo "  --auto stealthiq     Install StealthIQ setup"
     echo "  --auto jakoolit      Install JaKooLit setup"
     echo "  --auto both          Install both setups"
@@ -701,6 +1197,14 @@ show_usage() {
     echo "  --deps                         Install packages"
     echo "  --dry-run                      Preview changes"
     echo "  --help                         Show this help"
+    echo
+    echo "${CYAN}Checkpoint Management:${RESET}"
+    echo "  --list-checkpoints             List available checkpoints"
+    echo "  --rollback <checkpoint>        Rollback to specific checkpoint"
+    echo
+    echo "${CYAN}Debug Options:${RESET}"
+    echo "  -v, --verbose                  Show all commands"
+    echo "  -d, --debug                    Show variable values"
     echo
     echo "${CYAN}Log:${RESET} $LOG_FILE"
 }
@@ -897,8 +1401,39 @@ main() {
         --deps)
             acquire_lock
             check_prerequisites
+            check_network || warn "No network - package installation may fail"
             install_deps
             release_lock
+            ;;
+        --rollback)
+            [[ -z "${2:-}" ]] && { error "--rollback requires checkpoint name"; list_checkpoints; exit 1; }
+            rollback_to_checkpoint "$2"
+            ;;
+        --list-checkpoints)
+            list_checkpoints
+            ;;
+        --verbose|-v)
+            VERBOSE=true
+            msg "${CYAN}VERBOSE MODE - Showing all commands${RESET}"
+            shift
+            # Re-process remaining arguments
+            if [[ $# -gt 0 ]]; then
+                main "$@"
+            else
+                AUTO_MODE=true full_install "stealthiq"
+            fi
+            ;;
+        --debug|-d)
+            DEBUG=true
+            VERBOSE=true
+            msg "${MAGENTA}DEBUG MODE - Showing variable values${RESET}"
+            shift
+            # Re-process remaining arguments
+            if [[ $# -gt 0 ]]; then
+                main "$@"
+            else
+                AUTO_MODE=true full_install "stealthiq"
+            fi
             ;;
         --dry-run)
             DRY_RUN=true
@@ -907,9 +1442,18 @@ main() {
             detect_conflicts
             backup_configs
             copy_dotfiles
+            # Show what would be installed
+            msg "[DRY RUN] Would update CA certificates"
+            msg "[DRY RUN] Would detect and install graphics drivers (NVIDIA/AMD/Intel)"
+            msg "[DRY RUN] Would install paru (AUR helper) if not present"
+            msg "[DRY RUN] Would install pacman packages: hyprland, hyprpaper, hyprlock, hypridle, dunst, conky, btop, mpd, ncmpcpp, cava, playerctl, pavucontrol, easyeffects, kitty, zsh, fish, grim, slurp, wl-clipboard, hyprshot, cliphist, brightnessctl, fuzzel, rofi, wlogout, thunar, dolphin, nautilus, yazi, fonts, python, qt, ydotool, hyprsunset..."
+            msg "[DRY RUN] Would install AUR packages: quickshell, activitywatch-bin, vicinae-git, handy-git, python-materialyoucolor, songrec, microtex, pokemon-colorscripts-git, brave-bin, obsidian, megasync, ulauncher, bitwarden, spotify, visual-studio-code-bin, emojione-picker"
+            msg "[DRY RUN] Would setup: StealthIQ (symlink hypr -> hypr-stealthiq)"
+            msg "[DRY RUN] Would make paths portable in $CONFIG_DIR"
             ;;
         "")
-            interactive_mode
+            # Default: run stealthiq installation directly
+            AUTO_MODE=true full_install "stealthiq"
             ;;
         *)
             error "Unknown option: $1"
@@ -922,7 +1466,22 @@ main() {
 # Cleanup on exit
 cleanup() {
     local exit_code=$?
+    
+    # Show rollback message on interrupt
+    if [[ $exit_code -ne 0 ]] && [[ -n "${checkpoint:-}" ]]; then
+        echo
+        echo "${YELLOW}Operation interrupted or failed${RESET}"
+        echo "${CYAN}Rolling back to checkpoint: $(basename "$checkpoint")${RESET}"
+        restore_checkpoint "$checkpoint" 2>/dev/null || true
+    fi
+    
     release_lock 2>/dev/null || true
+    
+    # Restore original file descriptors and close tee processes properly
+    if [[ -e /proc/self/fd/3 ]]; then
+        exec 1>&3 2>&4
+        exec 3>&- 4>&-
+    fi
     
     if [[ $exit_code -ne 0 ]] && [[ -f "$LOG_FILE" ]]; then
         echo
@@ -932,11 +1491,85 @@ cleanup() {
         if [[ -f "$BACKUP_ROOT/latest.txt" ]]; then
             echo "${CYAN}Backup location: $(cat "$BACKUP_ROOT/latest.txt")${RESET}"
         fi
+        
+        # List available checkpoints
+        if [[ -d "$CHECKPOINT_DIR" ]] && [[ $(ls -A "$CHECKPOINT_DIR" 2>/dev/null) ]]; then
+            echo "${CYAN}Available checkpoints for rollback:${RESET}"
+            ls -t "$CHECKPOINT_DIR" | head -5 | while read -r cp; do
+                echo "  - $cp"
+            done
+        fi
     fi
     
     exit $exit_code
 }
 trap cleanup EXIT INT TERM HUP
+
+# =============================================================================
+# CHECKPOINT MANAGEMENT
+# =============================================================================
+
+# List available checkpoints
+list_checkpoints() {
+    header "AVAILABLE CHECKPOINTS"
+    
+    if [[ ! -d "$CHECKPOINT_DIR" ]] || [[ -z $(ls -A "$CHECKPOINT_DIR" 2>/dev/null) ]]; then
+        msg "No checkpoints found"
+        return 0
+    fi
+    
+    echo
+    for cp_dir in "$CHECKPOINT_DIR"/*; do
+        [[ -d "$cp_dir" ]] || continue
+        
+        local name=""
+        local time=""
+        local kernel=""
+        
+        if [[ -f "$cp_dir/metadata.txt" ]]; then
+            name=$(grep "CHECKPOINT_NAME=" "$cp_dir/metadata.txt" 2>/dev/null | cut -d= -f2)
+            time=$(grep "CHECKPOINT_TIME=" "$cp_dir/metadata.txt" 2>/dev/null | cut -d= -f2)
+            kernel=$(grep "KERNEL_VERSION=" "$cp_dir/metadata.txt" 2>/dev/null | cut -d= -f2)
+        fi
+        
+        echo "${GREEN}$(basename "$cp_dir")${RESET}"
+        echo "  Name: ${name:-unknown}"
+        echo "  Time: ${time:-unknown}"
+        [[ -n "$kernel" ]] && echo "  Kernel: $kernel"
+        echo
+    done
+}
+
+# Rollback to specific checkpoint
+rollback_to_checkpoint() {
+    local checkpoint_name="$1"
+    local checkpoint_path=""
+    
+    # Find checkpoint by name or full path
+    if [[ -d "$checkpoint_name" ]]; then
+        checkpoint_path="$checkpoint_name"
+    elif [[ -d "$CHECKPOINT_DIR/$checkpoint_name" ]]; then
+        checkpoint_path="$CHECKPOINT_DIR/$checkpoint_name"
+    else
+        # Try partial match
+        checkpoint_path=$(find "$CHECKPOINT_DIR" -maxdepth 1 -type d -name "*$checkpoint_name*" 2>/dev/null | head -1)
+    fi
+    
+    if [[ -z "$checkpoint_path" ]] || [[ ! -d "$checkpoint_path" ]]; then
+        error "Checkpoint not found: $checkpoint_name"
+        list_checkpoints
+        return 1
+    fi
+    
+    header "ROLLING BACK TO CHECKPOINT"
+    msg "Checkpoint: $(basename "$checkpoint_path")"
+    
+    acquire_lock
+    restore_checkpoint "$checkpoint_path"
+    release_lock
+    
+    success "Rollback complete"
+}
 
 # Run
 main "$@"

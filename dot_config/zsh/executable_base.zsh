@@ -118,3 +118,8 @@ ex ()
     echo "'$1' is not a valid file"
   fi
 }
+
+# Initialize zoxide (smart cd command)
+if command -v zoxide &>/dev/null; then
+  eval "$(zoxide init zsh)"
+fi

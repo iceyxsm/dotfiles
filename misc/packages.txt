@@ -6,7 +6,7 @@ tor
 paru
 yay
 zoxide
-exa
+eza
 thunar
 gvfs
 thunar-archive-plugin
@@ -51,6 +51,9 @@ powerline
 powerline-fonts
 wal
 feh
+swww
+bat
+fd
 notification-daemon
 gestures
 acpi

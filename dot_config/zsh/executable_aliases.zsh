@@ -34,12 +34,12 @@ alias vim="nvim"
 alias v="nvim"
 alias code="codium"
 
-# Changing "ls" to "exa"
+# Changing "ls" to "eza" (maintained fork of exa)
 alias l='ls --hyperlink'
-alias ls='exa -al --color=always --hyperlink --group-directories-first' # my preferred listing
-alias la='exa -a --color=always --hyperlink --group-directories-first'  # all files and dirs
-alias ll='exa -l --color=always --hyperlink --group-directories-first'  # long format
-alias lt='exa -aT --color=always --hyperlink --group-directories-first' # tree listing
+alias ls='eza -al --color=always --hyperlink --group-directories-first' # my preferred listing
+alias la='eza -a --color=always --hyperlink --group-directories-first'  # all files and dirs
+alias ll='eza -l --color=always --hyperlink --group-directories-first'  # long format
+alias lt='eza -aT --color=always --hyperlink --group-directories-first' # tree listing
 
 # Pacman and Paru - (package manager)
 alias pakages="pacman -Qq | fzf --preview 'pacman -Qil {}' --layout=reverse --bind 'enter:execute(pacman -Qil {} | less)'"
@@ -122,7 +122,7 @@ alias cd="z"
 alias hh="history"
 alias kc="killall conky"
 alias ck="conky"
-alias lock='betterlockscreen -l --text "Error 404: Display not found"'
+alias lock='hyprlock'
 alias logout="loginctl kill-session $XDG_SESSION_ID"
 alias logout-violent="sudo pkill -u '$USER' -9 Xorg"
 
@@ -193,8 +193,8 @@ alias disk-mounter='sudo blkmenu'
 alias gad='git add'
 alias gcm='git commit -m'
 
-# Wallpaper set 
-alias wallpaper-change='feh --bg-scale'
+# Wallpaper set (using swww for Wayland)
+alias wallpaper-change='swww img'
 
 alias dmenu='~/.config/sxhkd/scripts/dmenu.sh'
 
