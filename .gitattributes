@@ -1,0 +1,39 @@
+# Git line ending configuration
+# This ensures shell scripts and config files work on Linux
+
+# Shell scripts must use LF
+*.sh text eol=lf
+*.bash text eol=lf
+*.zsh text eol=lf
+
+# Hyprland config files
+*.conf text eol=lf
+
+# Treat other text files as text but don't force line endings
+# (allows Windows editing without massive renormalization)
+*.toml text
+*.json text
+*.jsonc text
+*.yaml text
+*.yml text
+*.ini text
+*.txt text
+*.md text
+*.qml text
+*.lua text
+*.py text
+
+# Binary files
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.svg binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.eot binary
+*.db binary
+*.dat binary
