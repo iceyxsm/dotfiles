@@ -1,4 +1,4 @@
-#!/bin/bash
+﻿#!/bin/bash
 # Dotfiles Installer - Bulletproof Edition
 # Original configs by StealthIQ (github.com/StealthIQ)
 # Modified by Iceyxsm (github.com/iceyxsm)
@@ -78,10 +78,10 @@ log() {
 }
 
 # Output functions
-msg() { echo -e "${BLUE}→${RESET} $*"; log "INFO" "$@"; }
-success() { echo -e "${GREEN}✓${RESET} $*"; log "SUCCESS" "$@"; }
-warn() { echo -e "${YELLOW}⚠${RESET} $*" >&2; log "WARN" "$@"; }
-error() { echo -e "${RED}✗${RESET} $*" >&2; log "ERROR" "$@"; }
+msg() { echo -e "${BLUE}â†’${RESET} $*"; log "INFO" "$@"; }
+success() { echo -e "${GREEN}âœ“${RESET} $*"; log "SUCCESS" "$@"; }
+warn() { echo -e "${YELLOW}âš ${RESET} $*" >&2; log "WARN" "$@"; }
+error() { echo -e "${RED}âœ—${RESET} $*" >&2; log "ERROR" "$@"; }
 header() { echo -e "${CYAN}${BOLD}$*${RESET}"; log "INFO" "$@"; }
 debug() { [[ "$DEBUG" == true ]] && echo -e "${MAGENTA}[DEBUG]${RESET} $*" >&2; log "DEBUG" "$@"; }
 verbose() { [[ "$VERBOSE" == true ]] && echo -e "${BLUE}[VERBOSE]${RESET} $*"; log "VERBOSE" "$@"; }
@@ -90,7 +90,7 @@ verbose() { [[ "$VERBOSE" == true ]] && echo -e "${BLUE}[VERBOSE]${RESET} $*"; l
 show_progress() {
     local message="$1"
     local pid="$2"
-    local spin='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+    local spin='â ‹â ™â ¹â ¸â ¼â ´â ¦â §â ‡â '
     local i=0
     
     while kill -0 "$pid" 2>/dev/null; do
@@ -393,7 +393,7 @@ detect_conflicts() {
             if [[ -L "$target" ]]; then
                 local link_target
                 link_target=$(readlink "$target")
-                warn "$name: Symlink exists → $link_target"
+                warn "$name: Symlink exists â†’ $link_target"
             else
                 warn "$name: Directory/file exists (will be backed up)"
             fi
@@ -512,10 +512,10 @@ safe_copy() {
     
     # Copy
     if cp -r "$src" "$dst"; then
-        log "COPY" "$src → $dst"
+        log "COPY" "$src â†’ $dst"
         return 0
     else
-        error "Failed to copy: $src → $dst"
+        error "Failed to copy: $src â†’ $dst"
         return 1
     fi
 }
@@ -540,10 +540,10 @@ safe_symlink() {
     
     # Create symlink
     if ln -sf "$target" "$link"; then
-        log "SYMLINK" "$link → $target"
+        log "SYMLINK" "$link â†’ $target"
         return 0
     else
-        error "Failed to create symlink: $link → $target"
+        error "Failed to create symlink: $link â†’ $target"
         return 1
     fi
 }
@@ -757,19 +757,6 @@ detect_gpu() {
     
     echo "$gpu_type"
 }
-    # Check for AMD
-    elif lspci | grep -i "vga\|3d\|display" | grep -i amd &>/dev/null; then
-        gpu_type="amd"
-    # Check for Intel
-    elif lspci | grep -i "vga\|3d\|display" | grep -i intel &>/dev/null; then
-        gpu_type="intel"
-    # Check for VMware/VirtualBox
-    elif lspci | grep -i "vmware\|virtualbox" &>/dev/null; then
-        gpu_type="virtual"
-    fi
-    
-    echo "$gpu_type"
-}
 
 install_graphics_drivers() {
     header "DETECTING GRAPHICS (Installation Disabled)"
@@ -788,95 +775,6 @@ install_graphics_drivers() {
     fi
     
     success "GPU detection complete (installation disabled)"
-}
-    
-    if [[ "$DRY_RUN" == true ]]; then
-        msg "[DRY RUN] Would detect and install graphics drivers"
-        return 0
-    fi
-    
-    local gpu_type
-    gpu_type=$(detect_gpu)
-    
-    msg "Detected GPU type: $gpu_type"
-    
-    local gpu_pkgs=()
-    
-    case "$gpu_type" in
-        nvidia)
-            msg "Installing NVIDIA drivers..."
-            gpu_pkgs=(
-                "nvidia" "nvidia-utils" "nvidia-settings"
-                # For Wayland/Hyprland support
-                "egl-wayland" "lib32-nvidia-utils"
-            )
-            # Check if nvidia-open is preferred (newer GPUs)
-            if [[ "${NVIDIA_OPEN:-}" == "true" ]]; then
-                msg "Using nvidia-open driver..."
-                gpu_pkgs=("nvidia-open" "nvidia-utils" "nvidia-settings" "egl-wayland")
-            fi
-            ;;
-        amd)
-            msg "Installing AMD drivers..."
-            gpu_pkgs=(
-                "mesa" "lib32-mesa"
-                "vulkan-radeon" "lib32-vulkan-radeon"
-                "amdvlk" "lib32-amdvlk"
-                # Video acceleration
-                "libva-utils" "vulkan-tools"
-            )
-            ;;
-        intel)
-            msg "Installing Intel drivers..."
-            gpu_pkgs=(
-                "mesa" "lib32-mesa"
-                "vulkan-intel" "lib32-vulkan-intel"
-                "intel-media-driver" "libva-utils"
-            )
-            ;;
-        virtual)
-            msg "Installing virtual machine drivers..."
-            gpu_pkgs=(
-                "mesa" "lib32-mesa"
-                "xf86-video-vmware"  # For VMware
-            )
-            ;;
-        *)
-            warn "Could not detect GPU type, installing generic drivers"
-            gpu_pkgs=("mesa" "lib32-mesa")
-            ;;
-    esac
-    
-    # Install GPU packages
-    if [[ ${#gpu_pkgs[@]} -gt 0 ]]; then
-        msg "Installing graphics packages: ${gpu_pkgs[*]}"
-        sudo pacman -S --needed --noconfirm "${gpu_pkgs[@]}" 2>&1 | tee -a "$LOG_FILE" || {
-            warn "Some graphics packages may have failed to install"
-        }
-    fi
-    
-    # NVIDIA-specific: Add kernel parameters
-    if [[ "$gpu_type" == "nvidia" ]]; then
-        msg "Configuring NVIDIA for Wayland..."
-        
-        # Check if nvidia modules are in mkinitcpio.conf
-        if [[ -f /etc/mkinitcpio.conf ]]; then
-            if ! grep -q "nvidia" /etc/mkinitcpio.conf; then
-                warn "NVIDIA detected. You may need to add 'nvidia nvidia_modeset nvidia_uvm nvidia_drm' to MODULES in /etc/mkinitcpio.conf"
-                warn "Then run: sudo mkinitcpio -P"
-            fi
-        fi
-        
-        # Add nvidia-drm.modeset=1 to kernel params if not present
-        if [[ -f /etc/default/grub ]]; then
-            if ! grep -q "nvidia-drm.modeset=1" /etc/default/grub; then
-                warn "Consider adding 'nvidia-drm.modeset=1' to GRUB_CMDLINE_LINUX_DEFAULT in /etc/default/grub"
-                warn "Then run: sudo grub-mkconfig -o /boot/grub/grub.cfg"
-            fi
-        fi
-    fi
-    
-    success "Graphics drivers installed"
 }
 
 install_deps() {
@@ -1226,12 +1124,12 @@ EOF
 show_banner() {
     # Compact banner
     echo ""
-    echo "${CYAN}┌────────────────────────────────────────┐${RESET}"
-    echo "${CYAN}│${RESET}  ${BOLD}Dotfiles Installer${RESET} ${MAGENTA}v$SCRIPT_VERSION${RESET}        ${CYAN}│${RESET}"
-    echo "${CYAN}│${RESET}                                        ${CYAN}│${RESET}"
-    echo "${CYAN}│${RESET}  ${MAGENTA}Made by${RESET} StealthIQ                  ${CYAN}│${RESET}"
-    echo "${CYAN}│${RESET}  ${MAGENTA}Refactored by${RESET} Iceyxsm              ${CYAN}│${RESET}"
-    echo "${CYAN}└────────────────────────────────────────┘${RESET}"
+    echo "${CYAN}â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”${RESET}"
+    echo "${CYAN}â”‚${RESET}  ${BOLD}Dotfiles Installer${RESET} ${MAGENTA}v$SCRIPT_VERSION${RESET}        ${CYAN}â”‚${RESET}"
+    echo "${CYAN}â”‚${RESET}                                        ${CYAN}â”‚${RESET}"
+    echo "${CYAN}â”‚${RESET}  ${MAGENTA}Made by${RESET} StealthIQ                  ${CYAN}â”‚${RESET}"
+    echo "${CYAN}â”‚${RESET}  ${MAGENTA}Refactored by${RESET} Iceyxsm              ${CYAN}â”‚${RESET}"
+    echo "${CYAN}â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜${RESET}"
     echo ""
 }
 
@@ -1365,9 +1263,9 @@ full_install() {
     if [[ $issues -eq 0 ]]; then
         success "Installation validated"
         echo
-        echo "${GREEN}${BOLD}╔════════════════════════════════════════════════╗${RESET}"
-        echo "${GREEN}${BOLD}║     INSTALLATION COMPLETE!                     ║${RESET}"
-        echo "${GREEN}${BOLD}╚════════════════════════════════════════════════╝${RESET}"
+        echo "${GREEN}${BOLD}â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—${RESET}"
+        echo "${GREEN}${BOLD}â•‘     INSTALLATION COMPLETE!                     â•‘${RESET}"
+        echo "${GREEN}${BOLD}â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•${RESET}"
         echo
         echo "${CYAN}Log out and back in to apply changes.${RESET}"
         echo "${BLUE}Backup:${RESET} $(cat "$BACKUP_ROOT/latest.txt" 2>/dev/null || echo "See $BACKUP_ROOT")"
