@@ -1463,15 +1463,13 @@ full_install() {
         echo
         
         # Ask to reboot
-        if [[ "${AUTO_MODE:-}" != "true" ]]; then
-            read -rp "${YELLOW}Reboot now to start GUI? [y/N]: ${RESET}" reboot_now
-            if [[ "$reboot_now" =~ ^[Yy]$ ]]; then
-                msg "Rebooting in 3 seconds..."
-                sleep 3
-                sudo reboot
-            else
-                msg "You can reboot later with: sudo reboot"
-            fi
+        read -rp "${YELLOW}Reboot now to start GUI? [y/N]: ${RESET}" reboot_now
+        if [[ "$reboot_now" =~ ^[Yy]$ ]]; then
+            msg "Rebooting in 3 seconds..."
+            sleep 3
+            sudo reboot
+        else
+            msg "You can reboot later with: sudo reboot"
         fi
     else
         error "Installation validation failed ($issues issues)"
