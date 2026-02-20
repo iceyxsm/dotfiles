@@ -1,4 +1,4 @@
-﻿#!/bin/bash
+#!/bin/bash
 # Dotfiles Installer - Bulletproof Edition
 # Original configs by StealthIQ (github.com/StealthIQ)
 # Modified by Iceyxsm (github.com/iceyxsm)
@@ -78,10 +78,10 @@ log() {
 }
 
 # Output functions
-msg() { echo -e "${BLUE}â†’${RESET} $*"; log "INFO" "$@"; }
-success() { echo -e "${GREEN}âœ“${RESET} $*"; log "SUCCESS" "$@"; }
-warn() { echo -e "${YELLOW}âš ${RESET} $*" >&2; log "WARN" "$@"; }
-error() { echo -e "${RED}âœ—${RESET} $*" >&2; log "ERROR" "$@"; }
+msg() { echo -e "${BLUE}→${RESET} $*"; log "INFO" "$@"; }
+success() { echo -e "${GREEN}✓${RESET} $*"; log "SUCCESS" "$@"; }
+warn() { echo -e "${YELLOW}⚠${RESET} $*" >&2; log "WARN" "$@"; }
+error() { echo -e "${RED}✗${RESET} $*" >&2; log "ERROR" "$@"; }
 header() { echo -e "${CYAN}${BOLD}$*${RESET}"; log "INFO" "$@"; }
 debug() { [[ "$DEBUG" == true ]] && echo -e "${MAGENTA}[DEBUG]${RESET} $*" >&2; log "DEBUG" "$@"; }
 verbose() { [[ "$VERBOSE" == true ]] && echo -e "${BLUE}[VERBOSE]${RESET} $*"; log "VERBOSE" "$@"; }
@@ -90,7 +90,7 @@ verbose() { [[ "$VERBOSE" == true ]] && echo -e "${BLUE}[VERBOSE]${RESET} $*"; l
 show_progress() {
     local message="$1"
     local pid="$2"
-    local spin='â ‹â ™â ¹â ¸â ¼â ´â ¦â §â ‡â '
+    local spin='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
     local i=0
     
     while kill -0 "$pid" 2>/dev/null; do
@@ -393,7 +393,7 @@ detect_conflicts() {
             if [[ -L "$target" ]]; then
                 local link_target
                 link_target=$(readlink "$target")
-                warn "$name: Symlink exists â†’ $link_target"
+                warn "$name: Symlink exists → $link_target"
             else
                 warn "$name: Directory/file exists (will be backed up)"
             fi
@@ -512,10 +512,10 @@ safe_copy() {
     
     # Copy
     if cp -r "$src" "$dst"; then
-        log "COPY" "$src â†’ $dst"
+        log "COPY" "$src → $dst"
         return 0
     else
-        error "Failed to copy: $src â†’ $dst"
+        error "Failed to copy: $src → $dst"
         return 1
     fi
 }
@@ -540,10 +540,10 @@ safe_symlink() {
     
     # Create symlink
     if ln -sf "$target" "$link"; then
-        log "SYMLINK" "$link â†’ $target"
+        log "SYMLINK" "$link → $target"
         return 0
     else
-        error "Failed to create symlink: $link â†’ $target"
+        error "Failed to create symlink: $link → $target"
         return 1
     fi
 }
@@ -563,14 +563,40 @@ copy_dotfiles() {
         
         local name
         name=$(basename "$src" | sed 's/^dot_//')
-        local dst="$CONFIG_DIR/$name"
         
-        msg "Copying $name..."
-        
-        if safe_copy "$src" "$dst"; then
-            ((copied++)) || true
+        # Special handling for hypr: copy to hypr-stealthiq and create symlink
+        if [[ "$name" == "hypr" ]]; then
+            local dst_stealthiq="$CONFIG_DIR/hypr-stealthiq"
+            local dst_hypr="$CONFIG_DIR/hypr"
+            
+            msg "Copying hypr to hypr-stealthiq..."
+            
+            if safe_copy "$src" "$dst_stealthiq"; then
+                ((copied++)) || true
+                
+                # Create symlink hypr -> hypr-stealthiq
+                if [[ "$DRY_RUN" == false ]]; then
+                    rm -rf "$dst_hypr"  # Remove existing hypr if any
+                    if ln -sf "hypr-stealthiq" "$dst_hypr"; then
+                        log "SYMLINK" "$dst_hypr ? hypr-stealthiq"
+                        success "Created hypr symlink to hypr-stealthiq"
+                    else
+                        warn "Failed to create hypr symlink"
+                    fi
+                fi
+            else
+                ((failed++)) || true
+            fi
         else
-            ((failed++)) || true
+            local dst="$CONFIG_DIR/$name"
+            
+            msg "Copying $name..."
+            
+            if safe_copy "$src" "$dst"; then
+                ((copied++)) || true
+            else
+                ((failed++)) || true
+            fi
         fi
     done
     
@@ -881,7 +907,7 @@ install_deps() {
         # GNOME desktop for thumbnail generation
         "gnome-desktop"
         # Qt dependencies for quickshell
-        "qt5-base" "qt6-base" "qt6-svg" "qt6-quickcontrols2" "exo"
+        "qt5-base" "qt6-base" "qt6-svg" "qt6-declarative" "exo"
         # KVantum for theming
         "kvantum"
         # ydotool for virtual keyboard input (used by quickshell)
@@ -906,7 +932,7 @@ install_deps() {
         # Vicinae (used in custom/execs.conf and keybinds)
         "vicinae-git"
         # Handy (AI assistant)
-        "handy-git"
+        "handy"
         # Python material color generation (for quickshell color scripts)
         "python-materialyoucolor"
         # Music recognition (used by quickshell SongRec service)
@@ -930,7 +956,7 @@ install_deps() {
         # Code editors
         "visual-studio-code-bin"
         # Emoji picker
-        "emojione-picker"
+        "emote"
     )
     
     # Install packages using AUR helper (yay/paru) (aur_helper should be available now)
@@ -1018,14 +1044,18 @@ setup_stealthiq() {
         return 0
     fi
     
-    # Verify config exists (the stealthiq config is now the default hypr config)
-    if [[ ! -d "$CONFIG_DIR/hypr" ]]; then
-        error "Hypr config not found. Run copy first."
+    # Verify hypr-stealthiq directory exists and hypr is a symlink to it
+    if [[ ! -d "$CONFIG_DIR/hypr-stealthiq" ]]; then
+        error "StealthIQ config not found. Run copy first."
         return 1
     fi
     
-    # The setup_stealthiq function is now redundant since the default config is already stealthiq
-    # This function remains for backward compatibility
+    # Ensure hypr symlink points to hypr-stealthiq
+    if [[ ! -L "$CONFIG_DIR/hypr" ]] || [[ $(readlink "$CONFIG_DIR/hypr") != "hypr-stealthiq" ]]; then
+        msg "Creating hypr symlink to hypr-stealthiq..."
+        rm -rf "$CONFIG_DIR/hypr"
+        ln -sf "hypr-stealthiq" "$CONFIG_DIR/hypr"
+    fi
     
     success "StealthIQ is now active"
 }
@@ -1117,12 +1147,12 @@ EOF
 show_banner() {
     # Compact banner
     echo ""
-    echo "${CYAN}â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”${RESET}"
-    echo "${CYAN}â”‚${RESET}  ${BOLD}Dotfiles Installer${RESET} ${MAGENTA}v$SCRIPT_VERSION${RESET}        ${CYAN}â”‚${RESET}"
-    echo "${CYAN}â”‚${RESET}                                        ${CYAN}â”‚${RESET}"
-    echo "${CYAN}â”‚${RESET}  ${MAGENTA}Made by${RESET} StealthIQ                  ${CYAN}â”‚${RESET}"
-    echo "${CYAN}â”‚${RESET}  ${MAGENTA}Refactored by${RESET} Iceyxsm              ${CYAN}â”‚${RESET}"
-    echo "${CYAN}â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜${RESET}"
+    echo "${CYAN}┌────────────────────────────────────────┐${RESET}"
+    echo "${CYAN}│${RESET}  ${BOLD}Dotfiles Installer${RESET} ${MAGENTA}v$SCRIPT_VERSION${RESET}        ${CYAN}│${RESET}"
+    echo "${CYAN}│${RESET}                                        ${CYAN}│${RESET}"
+    echo "${CYAN}│${RESET}  ${MAGENTA}Made by${RESET} StealthIQ                  ${CYAN}│${RESET}"
+    echo "${CYAN}│${RESET}  ${MAGENTA}Refactored by${RESET} Iceyxsm              ${CYAN}│${RESET}"
+    echo "${CYAN}└────────────────────────────────────────┘${RESET}"
     echo ""
 }
 
@@ -1256,9 +1286,9 @@ full_install() {
     if [[ $issues -eq 0 ]]; then
         success "Installation validated"
         echo
-        echo "${GREEN}${BOLD}â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—${RESET}"
-        echo "${GREEN}${BOLD}â•‘     INSTALLATION COMPLETE!                     â•‘${RESET}"
-        echo "${GREEN}${BOLD}â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•${RESET}"
+        echo "${GREEN}${BOLD}╔════════════════════════════════════════════════╗${RESET}"
+        echo "${GREEN}${BOLD}║     INSTALLATION COMPLETE!                     ║${RESET}"
+        echo "${GREEN}${BOLD}╚════════════════════════════════════════════════╝${RESET}"
         echo
         echo "${CYAN}Log out and back in to apply changes.${RESET}"
         echo "${BLUE}Backup:${RESET} $(cat "$BACKUP_ROOT/latest.txt" 2>/dev/null || echo "See $BACKUP_ROOT")"
