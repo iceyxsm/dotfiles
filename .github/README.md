@@ -107,6 +107,34 @@ Debug Options:
   -d, --debug          Show variable values and detailed info
 ```
 
+### 🔄 System Reset (For Broken Desktops)
+
+If your system is broken or you want a fresh start, use the reset script:
+
+```bash
+./reset_install.sh --reset           # Full system reset (preserves user data)
+./reset_install.sh --reset --dry-run # Preview what will happen
+```
+
+**What it does:**
+- Saves current package list to `~/.dotfiles-backups/`
+- Removes all packages except base system + preserved apps (browsers, editors, etc.)
+- Resets all config directories (hypr, waybar, nvim, zsh, etc.)
+- Reinstalls dotfiles fresh
+- Installs all packages from scratch
+
+**Preserved during reset:**
+- Personal data (Documents, Pictures, etc.)
+- Base system packages (base, base-devel, linux, pacman, systemd...)
+- User apps (brave-bin, firefox, neovim, discord, spotify, obsidian...)
+- AUR helper (paru/yay)
+
+**Checkpoint management:**
+```bash
+./reset_install.sh --list-checkpoints   # List available checkpoints
+./reset_install.sh --rollback <name>   # Rollback to checkpoint
+```
+
 ### Error Handling & Safety Features
 
 The installer includes comprehensive safety mechanisms:

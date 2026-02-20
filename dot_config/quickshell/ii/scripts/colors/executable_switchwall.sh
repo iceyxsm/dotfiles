@@ -146,6 +146,12 @@ set_wallpaper_path() {
     if [ -f "$SHELL_CONFIG_FILE" ]; then
         jq --arg path "$path" '.background.wallpaperPath = $path' "$SHELL_CONFIG_FILE" > "$SHELL_CONFIG_FILE.tmp" && mv "$SHELL_CONFIG_FILE.tmp" "$SHELL_CONFIG_FILE"
     fi
+    
+    # Update hyprlock background image
+    local hyprlock_colors="$XDG_CONFIG_HOME/hypr/hyprlock/colors.conf"
+    if [ -f "$hyprlock_colors" ]; then
+        sed -i "s|^\$background_image = .*|\$background_image = $path|" "$hyprlock_colors"
+    fi
 }
 
 set_thumbnail_path() {
