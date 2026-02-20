@@ -78,10 +78,10 @@ log() {
 }
 
 # Output functions
-msg() { echo -e "${BLUE}→${RESET} $*"; log "INFO" "$@"; }
-success() { echo -e "${GREEN}✓${RESET} $*"; log "SUCCESS" "$@"; }
-warn() { echo -e "${YELLOW}⚠${RESET} $*" >&2; log "WARN" "$@"; }
-error() { echo -e "${RED}✗${RESET} $*" >&2; log "ERROR" "$@"; }
+msg() { echo -e "${BLUE}[*]${RESET} $*"; log "INFO" "$@"; }
+success() { echo -e "${GREEN}[OK]${RESET} $*"; log "SUCCESS" "$@"; }
+warn() { echo -e "${YELLOW}[!]${RESET} $*" >&2; log "WARN" "$@"; }
+error() { echo -e "${RED}[ERR]${RESET} $*" >&2; log "ERROR" "$@"; }
 header() { echo -e "${CYAN}${BOLD}$*${RESET}"; log "INFO" "$@"; }
 debug() { [[ "$DEBUG" == true ]] && echo -e "${MAGENTA}[DEBUG]${RESET} $*" >&2; log "DEBUG" "$@"; }
 verbose() { [[ "$VERBOSE" == true ]] && echo -e "${BLUE}[VERBOSE]${RESET} $*"; log "VERBOSE" "$@"; }
