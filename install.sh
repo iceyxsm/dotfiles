@@ -811,6 +811,28 @@ install_deps() {
         return 0
     fi
     
+    # Check if pacman is locked (another instance running or stale lock)
+    local pacman_lock="/var/lib/pacman/db.lck"
+    if [[ -f "$pacman_lock" ]]; then
+        error "Pacman is locked: $pacman_lock"
+        error "Another package manager instance may be running"
+        
+        # Check if pacman is actually running
+        if pgrep -x "pacman" &>/dev/null || pgrep -f "pacman -S" &>/dev/null; then
+            error "Pacman is currently running. Please wait for it to finish."
+            exit 1
+        else
+            warn "No running pacman process found - lock file may be stale"
+            warn "To remove the lock, run: sudo rm -f $pacman_lock"
+            read -rp "Remove stale lock file? [y/N]: " remove_lock
+            if [[ "$remove_lock" =~ ^[Yy]$ ]]; then
+                sudo rm -f "$pacman_lock" && success "Lock removed" || { error "Failed to remove lock"; exit 1; }
+            else
+                exit 1
+            fi
+        fi
+    fi
+    
     # First, ensure CA certificates are up to date (fixes certificate errors)
     msg "Updating CA certificates..."
     sudo pacman -S --needed --noconfirm ca-certificates 2>&1 | tee -a "$LOG_FILE" || true
