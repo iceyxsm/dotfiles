@@ -747,6 +747,24 @@ detect_gpu() {
     if lspci | grep -i nvidia &>/dev/null; then
         gpu_type="nvidia"
     # Check for AMD
+    elif lspci | grep -i "vga|3d|display" | grep -i amd &>/dev/null; then
+        gpu_type="amd"
+    # Check for Intel
+    elif lspci | grep -i "vga|3d|display" | grep -i intel &>/dev/null; then
+        gpu_type="intel"
+    # Check for VMware/VirtualBox
+    elif lspci | grep -i "vmware|virtualbox" &>/dev/null; then
+        gpu_type="virtual"
+    fi
+    
+    echo "$gpu_type"
+}
+    
+# GPU_DETECTION_DISABLED
+#     # Check for NVIDIA
+#     if lspci | grep -i nvidia &>/dev/null; then
+#         gpu_type="nvidia"
+    # Check for AMD
     elif lspci | grep -i "vga\|3d\|display" | grep -i amd &>/dev/null; then
         gpu_type="amd"
     # Check for Intel
@@ -761,7 +779,23 @@ detect_gpu() {
 }
 
 install_graphics_drivers() {
-    header "DETECTING GRAPHICS DRIVERS"
+    header "DETECTING GRAPHICS (Installation Disabled)"
+    
+    # Detect GPU but don't install drivers
+    local gpu_type
+    gpu_type=$(detect_gpu)
+    
+    msg "Detected GPU type: $gpu_type"
+    
+    if [[ "$gpu_type" == "unknown" ]]; then
+        warn "Could not detect GPU type"
+    else
+        warn "GPU detected: $gpu_type"
+        warn "Driver installation is disabled - please install drivers manually"
+    fi
+    
+    success "GPU detection complete (installation disabled)"
+}
     
     if [[ "$DRY_RUN" == true ]]; then
         msg "[DRY RUN] Would detect and install graphics drivers"
@@ -1008,32 +1042,31 @@ install_deps() {
         "emojione-picker"
     )
     
-    # Install with pacman (official repos)
-    if command -v pacman &>/dev/null; then
-        msg "Installing official packages..."
-        # shellcheck disable=SC2024
-        if sudo pacman -S --needed --noconfirm "${pacman_pkgs[@]}" 2>&1 | tee -a "$LOG_FILE"; then
-            success "Official packages installed"
-        else
-            warn "Some packages may have failed (see log)"
-        fi
-    fi
-    
-    # Install AUR packages (aur_helper should be available now)
+    # Install packages using AUR helper (yay/paru) - handles both official and AUR packages
     local aur_helper
     aur_helper=$(check_aur_helper)
     
     if [[ -n "$aur_helper" ]]; then
-        msg "Installing AUR packages with $aur_helper..."
-        # shellcheck disable=SC2024
-        if $aur_helper -S --needed --noconfirm "${aur_pkgs[@]}" 2>&1 | tee -a "$LOG_FILE"; then
-            success "AUR packages installed"
+        msg "Installing all packages with $aur_helper..."
+        # Combine official and AUR packages for yay to handle
+        local all_pkgs=("${pacman_pkgs[@]}" "${aur_pkgs[@]}")
+        if $aur_helper -S --needed --noconfirm "${all_pkgs[@]}" 2>&1 | tee -a "$LOG_FILE"; then
+            success "All packages installed"
         else
-            warn "Some AUR packages may have failed (see log)"
+            warn "Some packages may have failed (see log)"
         fi
     else
-        warn "AUR helper not available - skipping AUR packages"
-        warn "Missing AUR packages: ${aur_pkgs[*]}"
+        # Fallback to pacman if no AUR helper available
+        warn "AUR helper not available, using pacman for official packages only"
+        if command -v pacman &>/dev/null; then
+            msg "Installing official packages with pacman..."
+            if sudo pacman -S --needed --noconfirm "${pacman_pkgs[@]}" 2>&1 | tee -a "$LOG_FILE"; then
+                success "Official packages installed"
+            else
+                warn "Some packages may have failed (see log)"
+            fi
+        fi
+        warn "AUR packages skipped: ${aur_pkgs[*]}"
     fi
     
     # Verify critical packages
@@ -1045,8 +1078,38 @@ install_deps() {
     done
     
     if [[ ${#missing[@]} -gt 0 ]]; then
-        warn "Missing critical packages: ${missing[*]}"
-        return 1
+        warn "Missing critical packages: ${missing[*]}, attempting to install..."
+        # Try to install missing critical packages using AUR helper (yay/paru)
+        local aur_helper
+        aur_helper=$(check_aur_helper)
+        
+        if [[ -n "$aur_helper" ]]; then
+            for pkg in "${missing[@]}"; do
+                msg "Installing missing package: $pkg using $aur_helper"
+                if $aur_helper -S --needed --noconfirm "$pkg" 2>&1 | tee -a "$LOG_FILE"; then
+                    success "Installed: $pkg"
+                else
+                    error "Failed to install: $pkg"
+                    return 1
+                fi
+            done
+        else
+            # Fallback to pacman if no AUR helper available
+            if command -v pacman &>/dev/null; then
+                for pkg in "${missing[@]}"; do
+                    msg "Installing missing package: $pkg using pacman"
+                    if sudo pacman -S --needed --noconfirm "$pkg" 2>&1 | tee -a "$LOG_FILE"; then
+                        success "Installed: $pkg"
+                    else
+                        error "Failed to install: $pkg"
+                        return 1
+                    fi
+                done
+            else
+                error "Cannot install missing packages - neither AUR helper nor pacman available"
+                return 1
+            fi
+        fi
     fi
     
     success "Dependencies OK"
