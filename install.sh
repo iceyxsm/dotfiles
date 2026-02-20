@@ -957,6 +957,8 @@ install_deps() {
         "flameshot"
         # System cleaning
         "bleachbit"
+        # Display manager (GUI login screen)
+        "sddm"
         # XDG Desktop Portal (screensharing, file pickers, etc.)
         "xdg-desktop-portal" "xdg-desktop-portal-hyprland" "xdg-desktop-portal-gtk"
         # Qt Wayland support (for Qt apps to work natively on Wayland)
