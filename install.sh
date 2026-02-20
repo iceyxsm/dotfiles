@@ -1460,6 +1460,19 @@ full_install() {
         echo "${CYAN}Log out and back in to apply changes.${RESET}"
         echo "${BLUE}Backup:${RESET} $(cat "$BACKUP_ROOT/latest.txt" 2>/dev/null || echo "See $BACKUP_ROOT")"
         echo "${BLUE}Log:${RESET} $LOG_FILE"
+        echo
+        
+        # Ask to reboot
+        if [[ "${AUTO_MODE:-}" != "true" ]]; then
+            read -rp "${YELLOW}Reboot now to start GUI? [y/N]: ${RESET}" reboot_now
+            if [[ "$reboot_now" =~ ^[Yy]$ ]]; then
+                msg "Rebooting in 3 seconds..."
+                sleep 3
+                sudo reboot
+            else
+                msg "You can reboot later with: sudo reboot"
+            fi
+        fi
     else
         error "Installation validation failed ($issues issues)"
         echo "${YELLOW}Checkpoint saved at: $checkpoint${RESET}"
