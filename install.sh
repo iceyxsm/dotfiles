@@ -955,9 +955,20 @@ install_deps() {
         "upower"        # Power/battery information
         # Screenshot tools
         "flameshot"
-        "sxhkd"         # Simple X hotkey daemon
         # System cleaning
         "bleachbit"
+        # XDG Desktop Portal (screensharing, file pickers, etc.)
+        "xdg-desktop-portal" "xdg-desktop-portal-hyprland" "xdg-desktop-portal-gtk"
+        # Qt Wayland support (for Qt apps to work natively on Wayland)
+        "qt5-wayland" "qt6-wayland"
+        # File manager support (trash, network mounts)
+        "gvfs" "gvfs-mtp"
+        # Video thumbnails
+        "ffmpegthumbnailer"
+        # Music recognition (in official repos, not AUR)
+        "songrec"
+        # Password manager (in official repos, not AUR)
+        "bitwarden"
     )
     
     # AUR packages (require paru or yay)
@@ -972,8 +983,8 @@ install_deps() {
         "handy"
         # Python material color generation (for quickshell color scripts)
         "python-materialyoucolor"
-        # Music recognition (used by quickshell SongRec service)
-        "songrec"
+        # Rofi for Wayland (proper Wayland support)
+        "rofi-wayland"
         # LaTeX renderer for quickshell
         "microtex"
         # Pokemon in terminal
@@ -986,8 +997,8 @@ install_deps() {
         "megasync"
         # App launcher alternative
         "ulauncher"
-        # Password manager
-        "bitwarden"
+        # Hyprland polkit agent (modern alternative to polkit-gnome)
+        "hyprpolkitagent"
         # Spotify
         "spotify"
         # Code editors
