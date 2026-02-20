@@ -881,7 +881,7 @@ install_deps() {
         # GNOME desktop for thumbnail generation
         "gnome-desktop"
         # Qt dependencies for quickshell
-        "qt5-base" "qt6-base" "qt6-svg" "qt6-quickcontrols2"
+        "qt5-base" "qt6-base" "qt6-svg" "qt6-quickcontrols2" "exo"
         # KVantum for theming
         "kvantum"
         # ydotool for virtual keyboard input (used by quickshell)
@@ -1018,21 +1018,14 @@ setup_stealthiq() {
         return 0
     fi
     
-    # Verify config exists
-    if [[ ! -d "$CONFIG_DIR/hypr-stealthiq" ]]; then
-        error "StealthIQ config not found. Run copy first."
+    # Verify config exists (the stealthiq config is now the default hypr config)
+    if [[ ! -d "$CONFIG_DIR/hypr" ]]; then
+        error "Hypr config not found. Run copy first."
         return 1
     fi
     
-    # Backup current if needed
-    if [[ -d "$CONFIG_DIR/hypr" ]] && [[ ! -L "$CONFIG_DIR/hypr" ]] && [[ ! -d "$CONFIG_DIR/hypr-jakoolit" ]]; then
-        msg "Backing up current hypr as hypr-jakoolit..."
-        mv "$CONFIG_DIR/hypr" "$CONFIG_DIR/hypr-jakoolit"
-    fi
-    
-    # Create symlink
-    safe_symlink "hypr-stealthiq" "$CONFIG_DIR/hypr"
-    make_portable
+    # The setup_stealthiq function is now redundant since the default config is already stealthiq
+    # This function remains for backward compatibility
     
     success "StealthIQ is now active"
 }
