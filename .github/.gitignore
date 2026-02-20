@@ -1,0 +1,63 @@
+# No sensitive configuration files
+*.secret
+*.key
+*.password
+*.token
+
+# No private SSH keys
+*.rsa
+*.dsa
+*.ppk
+
+# No sensitive API keys or credentials
+*.api_key
+*.api_secret
+*.credentials
+*.env
+
+# No database connection strings
+*.db
+*.dat
+*.sqlite
+*.db-config
+
+# No personal information
+*.personal
+*.private
+
+# No sensitive certificates
+*.crt
+*.cer
+*.p12
+*.pem
+
+# No sensitive log files
+*.log
+*.log.*
+log/
+
+# No backup or temporary files
+*~
+*.bak
+*.swp
+*.swo
+*.save
+*.old
+*.orig
+.DS_Store
+
+# No system-specific or editor-specific files
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+*.project
+*.classpath
+*.settings/
+.svn/
+CVS/
+thumbs.db
+Desktop.ini
+
+/pentesting/
+/tools/
