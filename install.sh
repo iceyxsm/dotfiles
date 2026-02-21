@@ -1143,11 +1143,18 @@ setup_display_manager() {
         return 0
     fi
     
+    # Check if we can use sudo without password for systemctl
     msg "Enabling SDDM display manager..."
-    if sudo systemctl enable sddm --now 2>&1 | tee -a "$LOG_FILE"; then
-        success "SDDM enabled successfully"
+    if sudo -n systemctl enable sddm 2>&1 | tee -a "$LOG_FILE"; then
+        success "SDDM enabled"
+        msg "Starting SDDM now..."
+        sudo systemctl start sddm 2>&1 | tee -a "$LOG_FILE" || warn "Failed to start SDDM now (will start on reboot)"
     else
         warn "Failed to enable SDDM automatically"
+        warn "You may need to run manually after install:"
+        warn "  sudo systemctl enable sddm --now"
+        echo
+        warn "Alternatively, TTY1 auto-login has been configured as a fallback"
     fi
     
     msg "Enabling essential systemd services..."
@@ -1189,6 +1196,48 @@ fi
 EOF
     
     success "TTY auto-login configured for TTY1"
+}
+
+# =============================================================================
+# POST-INSTALL NOTES
+# =============================================================================
+
+show_post_install_notes() {
+    echo
+    echo "${CYAN}${BOLD}╔════════════════════════════════════════════════════════════════╗${RESET}"
+    echo "${CYAN}${BOLD}║           IMPORTANT POST-INSTALLATION INFORMATION              ║${RESET}"
+    echo "${CYAN}${BOLD}╚════════════════════════════════════════════════════════════════╝${RESET}"
+    echo
+    echo "${YELLOW}1. DISPLAY / MONITOR ISSUES (Screen cut off?):${RESET}"
+    echo "   The install uses auto-detect. If your screen is wrong:"
+    echo "   ${CYAN}hyprctl monitors${RESET}  # Get your monitor name (e.g., HDMI-A-1)"
+    echo "   ${CYAN}nano ~/.config/hypr/monitors.conf${RESET}"
+    echo "   Change: monitor=,preferred,auto,1"
+    echo "   To: monitor=HDMI-A-1,1920x1080@144,0x0,1 (use YOUR monitor)"
+    echo
+    echo "${YELLOW}2. NO LOGIN SCREEN (SDDM not showing?):${RESET}"
+    echo "   Run manually: ${CYAN}sudo systemctl enable sddm --now${RESET}"
+    echo "   Or TTY1 auto-login works as fallback"
+    echo
+    echo "${YELLOW}3. MOUSE GLITCHING/CURSOR ISSUES:${RESET}"
+    echo "   Fix is applied. If still glitchy, edit:"
+    echo "   ${CYAN}~/.config/hypr/hyprland/general.conf${RESET}"
+    echo "   Try: env = AQ_DRM_DEVICES,/dev/dri/card0"
+    echo
+    echo "${YELLOW}4. BLACK SCREEN:${RESET}"
+    echo "   Hyprpaper is set as fallback. Check: ${CYAN}ls ~/wallpapers/${RESET}"
+    echo
+    echo "${YELLOW}5. 'DEBUG MODE' WARNING:${RESET}"
+    echo "   Normal when starting from TTY. Won't affect functionality."
+    echo
+    echo "${YELLOW}6. MEGA CLOUD:${RESET}"
+    echo "   DISABLED by default. To enable: edit custom/execs.conf"
+    echo
+    echo "${YELLOW}7. FIRST TIME:${RESET}"
+    echo "   ${CYAN}Super + /${RESET} = keybindings, ${CYAN}Super + Q${RESET} = terminal"
+    echo
+    echo "${CYAN}Log:${RESET} $LOG_FILE"
+    echo
 }
 
 switch_setup() {
